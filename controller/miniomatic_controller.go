@@ -5,11 +5,19 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/stenstromen/miniomatic/k8sclient"
 	"github.com/stenstromen/miniomatic/model"
 )
 
 func GetItems(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(model.Items)
+	pods, err := k8sclient.GetPods()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pods)
 }
 
 func GetItem(w http.ResponseWriter, r *http.Request) {
