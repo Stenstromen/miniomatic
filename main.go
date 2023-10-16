@@ -4,8 +4,9 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/gorilla/mux"
 	"github.com/stenstromen/miniomatic/controller"
+
+	"github.com/gorilla/mux"
 )
 
 func init() {
