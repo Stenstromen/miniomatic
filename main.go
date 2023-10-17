@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/joho/godotenv"
 	"github.com/stenstromen/miniomatic/controller"
 
 	"github.com/gorilla/mux"
@@ -14,6 +15,11 @@ func init() {
 }
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file:", err)
+	}
+
 	router := mux.NewRouter()
 
 	router.HandleFunc("/items", controller.GetItems).Methods("GET")
@@ -22,7 +28,7 @@ func main() {
 	router.HandleFunc("/items/{id}", controller.UpdateItem).Methods("PUT")
 	router.HandleFunc("/items/{id}", controller.DeleteItem).Methods("DELETE")
 
-	err := http.ListenAndServe(":8080", router)
+	err = http.ListenAndServe(":8080", router)
 
 	if err != nil {
 		log.Fatal("Failed to start server: ", err)

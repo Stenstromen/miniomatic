@@ -10,6 +10,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -19,7 +20,40 @@ import (
 
 func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, clusterIssuer, storageClassName, subdomain string, storageGi int) {
 	// Namespace for resources
-	namespace := "default"
+	namespace := "miniomatic"
+
+	// Get the Kubernetes configuration.
+	configFile := os.Getenv("KUBECONFIG_FILE")
+	if configFile == "" {
+		configFile = filepath.Join(os.Getenv("HOME"), ".kube", "config")
+	}
+	config, err := clientcmd.BuildConfigFromFlags("", configFile)
+	if err != nil {
+		log.Fatalf("Failed to get Kubernetes config: %v", err)
+	}
+
+	// Create the Kubernetes client.
+	client, err = kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Fatalf("Failed to create Kubernetes client: %v", err)
+	}
+
+	_, err = client.CoreV1().Namespaces().Get(context.Background(), namespace, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			_, err = client.CoreV1().Namespaces().Create(context.Background(), &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: namespace,
+				},
+			}, metav1.CreateOptions{})
+			if err != nil {
+				log.Fatalf("Failed to create namespace %s: %v", namespace, err)
+			}
+			log.Printf("Created namespace %s", namespace)
+		} else {
+			log.Fatalf("Failed to get namespace %s: %v", namespace, err)
+		}
+	}
 
 	// Deployment
 	deployment := &appsv1.Deployment{
@@ -66,9 +100,9 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 			},
 		},
 	}
-	_, err := client.AppsV1().Deployments(namespace).Create(context.TODO(), deployment, metav1.CreateOptions{})
+	_, err = client.AppsV1().Deployments(namespace).Create(context.TODO(), deployment, metav1.CreateOptions{})
 	if err != nil {
-		log.Fatalln("Failed to create deployment:", err)
+		log.Fatalf("Failed to create deployment: %v", err)
 	}
 
 	// Service
