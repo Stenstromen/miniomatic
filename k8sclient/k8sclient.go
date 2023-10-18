@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/stenstromen/miniomatic/rnd"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -18,8 +20,9 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, clusterIssuer, storageClassName, subdomain string, storageGi int) {
-	// Namespace for resources
+func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, clusterIssuer, storageClassName string, storageGi int) (string, error) {
+	randnum := rnd.RandomString(6)
+	wildcard_domain := randnum + "." + os.Getenv("WILDCARD_DOMAIN")
 	namespace := "miniomatic"
 
 	// Get the Kubernetes configuration.
@@ -58,14 +61,14 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 	// Deployment
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "minio-deployment",
+			Name: randnum + "-minio-deployment",
 		},
 		Spec: appsv1.DeploymentSpec{
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
-							Name:  "minio",
+							Name:  randnum + "-minio",
 							Image: "minio/minio:latest",
 							Args:  []string{"server", "/data"},
 							Env: []corev1.EnvVar{
@@ -91,7 +94,7 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 							Name: "data",
 							VolumeSource: corev1.VolumeSource{
 								PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-									ClaimName: "minio-pvc",
+									ClaimName: randnum + "-minio-pvc",
 								},
 							},
 						},
@@ -108,7 +111,7 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 	// Service
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "minio-service",
+			Name: randnum + "-minio-service",
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -118,7 +121,7 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 				},
 			},
 			Selector: map[string]string{
-				"app": "minio",
+				"app": randnum + "minio",
 			},
 		},
 	}
@@ -129,10 +132,10 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 
 	// Ingress
 	pathTypePrefix := networkingv1.PathTypePrefix
-	host := subdomain + ".example.com"
+	host := wildcard_domain
 	ingress := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "minio-ingress",
+			Name: randnum + "-minio-ingress",
 			Annotations: map[string]string{
 				"kubernetes.io/ingress.class":                 "nginx",
 				"cert-manager.io/cluster-issuer":              clusterIssuer,
@@ -151,7 +154,7 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 									PathType: &pathTypePrefix,
 									Backend: networkingv1.IngressBackend{
 										Service: &networkingv1.IngressServiceBackend{
-											Name: "minio-service",
+											Name: randnum + "-minio-service",
 											Port: networkingv1.ServiceBackendPort{
 												Number: 9000,
 											},
@@ -179,7 +182,7 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 	// PVC
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "minio-pvc",
+			Name: randnum + "-minio-pvc",
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
@@ -195,6 +198,8 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 	if err != nil {
 		log.Fatalln("Failed to create PVC:", err)
 	}
+
+	return randnum, nil
 }
 
 func GetPods() ([]corev1.Pod, error) {

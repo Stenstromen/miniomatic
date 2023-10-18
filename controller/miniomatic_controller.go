@@ -2,11 +2,13 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
 	"github.com/stenstromen/miniomatic/k8sclient"
 	"github.com/stenstromen/miniomatic/model"
+	"github.com/stenstromen/miniomatic/rnd"
 )
 
 func GetItems(w http.ResponseWriter, r *http.Request) {
@@ -15,6 +17,8 @@ func GetItems(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	rand := rnd.RandomString(6)
+	fmt.Println(rand)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(pods)
