@@ -10,27 +10,23 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
-func Madmin() error {
+func Madmin(Id, RootUser, RootPassword, BucketName, AccessKey, SecretKey string) error {
 
-	endpoint := "localhost:9000"
-	accessKey := "user"
-	secretKey := "password"
-	useSSL := false
+	endpoint := Id + "." + os.Getenv("WILDCARD_DOMAIN")
+	useSSL := true
 
 	// Initialize MinIO admin client
-	madminClient, err := madmin.New(endpoint, accessKey, secretKey, useSSL)
+	madminClient, err := madmin.New(endpoint, RootUser, RootPassword, useSSL)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
 	// User creation
-	newUserAccessKey := "newUserAccessKey"
-	newUserSecretKey := "newUserSecretKey"
-	err = madminClient.AddUser(context.Background(), newUserAccessKey, newUserSecretKey)
+	err = madminClient.AddUser(context.Background(), AccessKey, SecretKey)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	err = madminClient.SetPolicy(context.Background(), "readwrite", newUserAccessKey, false)
+	err = madminClient.SetPolicy(context.Background(), "readwrite", AccessKey, false)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -45,7 +41,7 @@ func Madmin() error {
 
 	// Initialize standard MinIO client
 	minioClient, err := minio.New(endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(newUserAccessKey, newUserSecretKey, ""),
+		Creds:  credentials.NewStaticV4(AccessKey, SecretKey, ""),
 		Secure: useSSL,
 	})
 	if err != nil {
@@ -53,15 +49,14 @@ func Madmin() error {
 	}
 
 	// Create a new bucket for the user
-	bucketName := "lol"     // Name of the new bucket
 	location := "us-east-1" // Region; adjust as necessary
 
-	err = minioClient.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{Region: location})
+	err = minioClient.MakeBucket(context.Background(), BucketName, minio.MakeBucketOptions{Region: location})
 	if err != nil {
-		log.Printf("%v already exists", bucketName)
+		log.Printf("%v already exists", BucketName)
 		os.Exit(0)
 	}
 
-	log.Printf("%v created, %v created, and %v set successfully!", accountInfo.AccountName, bucketName, newUserAccessKey)
+	log.Printf("%v created, %v created, and %v set successfully!", accountInfo.AccountName, BucketName, AccessKey)
 	return nil
 }

@@ -3,53 +3,82 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/stenstromen/miniomatic/db"
 	"github.com/stenstromen/miniomatic/k8sclient"
+	"github.com/stenstromen/miniomatic/madmin"
 	"github.com/stenstromen/miniomatic/model"
 	"github.com/stenstromen/miniomatic/rnd"
 )
 
 func GetItems(w http.ResponseWriter, r *http.Request) {
-	pods, err := k8sclient.GetPods()
+	items, err := db.GetAllData()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	rand := rnd.RandomString(6)
-	fmt.Println(rand)
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(pods)
+
+	json.NewEncoder(w).Encode(items)
+
 }
 
 func GetItem(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	for _, item := range model.Items {
-		if item.ID == params["id"] {
-			json.NewEncoder(w).Encode(item)
-			return
-		}
-	}
-
-	returnitem, err := json.Marshal(&model.Item{})
+	item, err := db.GetDataByID(mux.Vars(r)["id"])
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if string(returnitem) == "{}" {
-		http.Error(w, "Item not found", http.StatusNotFound)
-		return
-	}
-	w.Write(returnitem)
+	w.Header().Set("Content-Type", "application/json")
+
+	json.NewEncoder(w).Encode(item)
 }
 
 func CreateItem(w http.ResponseWriter, r *http.Request) {
-	var item model.Item
-	_ = json.NewDecoder(r.Body).Decode(&item)
-	model.Items = append(model.Items, item)
-	json.NewEncoder(w).Encode(item)
+	var post model.Post
+	if r.ContentLength == 0 {
+		http.Error(w, "Empty request body", http.StatusBadRequest)
+		return
+	}
+	_ = json.NewDecoder(r.Body).Decode(&post)
+	randnum := rnd.RandomString(false, 6)
+	RootUser := rnd.RandomString(true, 16)
+	RootPassword := rnd.RandomString(true, 16)
+	AccessKey := rnd.RandomString(true, 17)
+	SecretKey := rnd.RandomString(true, 33)
+	ClusterIssuer := os.Getenv("CLUSTERISSUER")
+	StorageClassName := os.Getenv("STORAGECLASSNAME")
+	Gigabytes := post.Gi
+
+	go func() {
+		err := k8sclient.CreateMinioResources(randnum, RootUser, RootPassword, ClusterIssuer, StorageClassName, Gigabytes)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		err = madmin.Madmin(randnum, RootUser, RootPassword, post.Bucket, AccessKey, SecretKey)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}()
+
+	var resp model.Resp
+	resp.ID = randnum
+	resp.Gi = fmt.Sprintf("%d", post.Gi)
+	resp.Bucket = post.Bucket
+	resp.URL = "https://" + randnum + "." + os.Getenv("WILDCARD_DOMAIN")
+	resp.AccessKey = AccessKey
+	resp.SecretKey = SecretKey
+	db.InsertData(randnum, post.Bucket, Gigabytes)
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func UpdateItem(w http.ResponseWriter, r *http.Request) {
@@ -70,11 +99,29 @@ func UpdateItem(w http.ResponseWriter, r *http.Request) {
 
 func DeleteItem(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
-	for index, item := range model.Items {
-		if item.ID == params["id"] {
-			model.Items = append(model.Items[:index], model.Items[index+1:]...)
-			break
+	id := params["id"]
+
+	err := db.DeleteData(id)
+	if err != nil {
+		if strings.Contains(err.Error(), "no record found with ID") {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		} else {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		}
+		return
 	}
-	json.NewEncoder(w).Encode(model.Items)
+
+	// Launch a goroutine to delete the Kubernetes resources associated with this ID
+	go func() {
+		if err := k8sclient.DeleteMinioResources(id); err != nil {
+			log.Printf("Error deleting resources for ID %s: %v", id, err)
+		}
+	}()
+
+	// Immediately respond with 202 Accepted
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]string{"status": "Deletion in progress"})
 }

@@ -5,8 +5,13 @@ import (
 	"time"
 )
 
-func RandomString(length int) string {
-	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+func RandomString(key bool, length int) string {
+	var charset string
+	if key {
+		charset = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	} else {
+		charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+	}
 	seededRand := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	b := make([]byte, length)

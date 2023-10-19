@@ -73,6 +73,7 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/imdario/mergo v0.3.13 // indirect
 	github.com/joho/godotenv v1.5.1
+	github.com/mattn/go-sqlite3 v1.14.17
 	github.com/minio/madmin-go/v3 v3.0.27
 	github.com/minio/minio-go/v7 v7.0.63
 	github.com/rogpeppe/go-internal v1.11.0 // indirect

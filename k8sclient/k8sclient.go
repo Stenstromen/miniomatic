@@ -7,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/stenstromen/miniomatic/rnd"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -20,42 +18,54 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, clusterIssuer, storageClassName string, storageGi int) (string, error) {
-	randnum := rnd.RandomString(6)
-	wildcard_domain := randnum + "." + os.Getenv("WILDCARD_DOMAIN")
-	namespace := "miniomatic"
+const namespace = "miniomatic"
 
-	// Get the Kubernetes configuration.
+func getK8sClient() (*kubernetes.Clientset, error) {
 	configFile := os.Getenv("KUBECONFIG_FILE")
 	if configFile == "" {
 		configFile = filepath.Join(os.Getenv("HOME"), ".kube", "config")
 	}
 	config, err := clientcmd.BuildConfigFromFlags("", configFile)
 	if err != nil {
-		log.Fatalf("Failed to get Kubernetes config: %v", err)
+		return nil, fmt.Errorf("Failed to get Kubernetes config: %v", err)
 	}
-
-	// Create the Kubernetes client.
-	client, err = kubernetes.NewForConfig(config)
+	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		log.Fatalf("Failed to create Kubernetes client: %v", err)
+		return nil, fmt.Errorf("Failed to create Kubernetes client: %v", err)
 	}
+	return client, nil
+}
 
-	_, err = client.CoreV1().Namespaces().Get(context.Background(), namespace, metav1.GetOptions{})
-	if err != nil {
-		if errors.IsNotFound(err) {
-			_, err = client.CoreV1().Namespaces().Create(context.Background(), &corev1.Namespace{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: namespace,
-				},
-			}, metav1.CreateOptions{})
-			if err != nil {
-				log.Fatalf("Failed to create namespace %s: %v", namespace, err)
-			}
-			log.Printf("Created namespace %s", namespace)
-		} else {
-			log.Fatalf("Failed to get namespace %s: %v", namespace, err)
+func ensureNamespace(client *kubernetes.Clientset) error {
+	_, err := client.CoreV1().Namespaces().Get(context.Background(), namespace, metav1.GetOptions{})
+	if errors.IsNotFound(err) {
+		_, err = client.CoreV1().Namespaces().Create(context.Background(), &corev1.Namespace{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: namespace,
+			},
+		}, metav1.CreateOptions{})
+		if err != nil {
+			return fmt.Errorf("Failed to create namespace %s: %v", namespace, err)
 		}
+		log.Printf("Created namespace %s", namespace)
+	} else if err != nil {
+		return fmt.Errorf("Failed to get namespace %s: %v", namespace, err)
+	}
+	return nil
+}
+
+func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storageClassName string, storageGi int) error {
+	//randnum := rnd.RandomString(false, 6)
+	wildcard_domain := randnum + "." + os.Getenv("WILDCARD_DOMAIN")
+
+	// Get the Kubernetes configuration.
+	client, err := getK8sClient()
+	if err != nil {
+		return err
+	}
+
+	if err := ensureNamespace(client); err != nil {
+		return err
 	}
 
 	// Deployment
@@ -64,7 +74,13 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 			Name: randnum + "-minio-deployment",
 		},
 		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"app": randnum + "minio"},
+			},
 			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": randnum + "minio"},
+				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{
 						{
@@ -111,7 +127,7 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 	// Service
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: randnum + "-minio-service",
+			Name: "s-" + randnum + "-minio-service",
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -137,9 +153,9 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 		ObjectMeta: metav1.ObjectMeta{
 			Name: randnum + "-minio-ingress",
 			Annotations: map[string]string{
-				"kubernetes.io/ingress.class":                 "nginx",
-				"cert-manager.io/cluster-issuer":              clusterIssuer,
-				"nginx.ingress.kubernetes.io/proxy-body-size": "unlimited",
+				"kubernetes.io/ingress.class":    "nginx",
+				"cert-manager.io/cluster-issuer": clusterIssuer,
+				//"nginx.ingress.kubernetes.io/proxy-body-size": "unlimited",
 			},
 		},
 		Spec: networkingv1.IngressSpec{
@@ -154,7 +170,7 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 									PathType: &pathTypePrefix,
 									Backend: networkingv1.IngressBackend{
 										Service: &networkingv1.IngressServiceBackend{
-											Name: randnum + "-minio-service",
+											Name: "s-" + randnum + "-minio-service",
 											Port: networkingv1.ServiceBackendPort{
 												Number: 9000,
 											},
@@ -179,6 +195,9 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 		log.Fatalln("Failed to create ingress:", err)
 	}
 
+	storage := storageGi
+	fmt.Println("Value of storageGi:", storage)
+
 	// PVC
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -194,33 +213,44 @@ func CreateMinioResources(client *kubernetes.Clientset, rootUser, rootPassword, 
 			},
 		},
 	}
+	fmt.Printf("PVC Object: %+v\n", pvc)
 	_, err = client.CoreV1().PersistentVolumeClaims(namespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
 	if err != nil {
 		log.Fatalln("Failed to create PVC:", err)
 	}
 
-	return randnum, nil
+	return nil
 }
 
-func GetPods() ([]corev1.Pod, error) {
-	// Use kubeconfig to create client configuration
-	kubeconfig := filepath.Join(os.Getenv("HOME"), ".kube", "config")
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+func DeleteMinioResources(randnum string) error {
+	client, err := getK8sClient()
 	if err != nil {
-		panic(err.Error())
+		return err
 	}
 
-	// Create clientset from configuration
-	clientset, err := kubernetes.NewForConfig(config)
+	// Delete Ingress
+	err = client.NetworkingV1().Ingresses(namespace).Delete(context.TODO(), randnum+"-minio-ingress", metav1.DeleteOptions{})
 	if err != nil {
-		panic(err.Error())
+		return fmt.Errorf("Failed to delete ingress: %v", err)
 	}
 
-	// List pods in the "default" namespace
-	pods, err := clientset.CoreV1().Pods("default").List(context.TODO(), metav1.ListOptions{})
+	// Delete Service
+	err = client.CoreV1().Services(namespace).Delete(context.TODO(), "s-"+randnum+"-minio-service", metav1.DeleteOptions{})
 	if err != nil {
-		panic(err.Error())
+		return fmt.Errorf("Failed to delete service: %v", err)
 	}
 
-	return pods.Items, nil
+	// Delete Deployment
+	err = client.AppsV1().Deployments(namespace).Delete(context.TODO(), randnum+"-minio-deployment", metav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("Failed to delete deployment: %v", err)
+	}
+
+	// Delete PVC
+	err = client.CoreV1().PersistentVolumeClaims(namespace).Delete(context.TODO(), randnum+"-minio-pvc", metav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("Failed to delete PVC: %v", err)
+	}
+
+	return nil
 }

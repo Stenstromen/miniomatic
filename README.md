@@ -13,5 +13,7 @@ Resp {
     "gi": "int",
     "bucket": "string",
     "url": "string",
+    "accesskey": "string",
+    "secretkey": "string",
 }
 ```
