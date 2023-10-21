@@ -20,6 +20,8 @@ import (
 
 const namespace = "miniomatic"
 
+func boolPtr(b bool) *bool { return &b }
+
 func getK8sClient() (*kubernetes.Clientset, error) {
 	configFile := os.Getenv("KUBECONFIG_FILE")
 	if configFile == "" {
@@ -54,6 +56,26 @@ func ensureNamespace(client *kubernetes.Clientset) error {
 	return nil
 }
 
+func createMinioSecret(client *kubernetes.Clientset, randnum, namespace, rootPassword string) error {
+	// Define the secret
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: randnum + "-minio-secrets",
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: map[string][]byte{
+			"rootPassword": []byte(rootPassword),
+		},
+	}
+
+	// Create the secret in the Kubernetes cluster
+	_, err := client.CoreV1().Secrets(namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to create secret: %v", err)
+	}
+	return nil
+}
+
 func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storageClassName string, storageGi int) error {
 	//randnum := rnd.RandomString(false, 6)
 	wildcard_domain := randnum + "." + os.Getenv("WILDCARD_DOMAIN")
@@ -61,6 +83,12 @@ func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storag
 	// Get the Kubernetes configuration.
 	client, err := getK8sClient()
 	if err != nil {
+		return err
+	}
+
+	// Create the Minio Secret
+	if err := createMinioSecret(client, randnum, namespace, rootPassword); err != nil {
+		log.Fatalf("Failed to create secret: %v", err)
 		return err
 	}
 
@@ -82,6 +110,7 @@ func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storag
 					Labels: map[string]string{"app": randnum + "minio"},
 				},
 				Spec: corev1.PodSpec{
+					AutomountServiceAccountToken: boolPtr(false),
 					Containers: []corev1.Container{
 						{
 							Name:  randnum + "-minio",
@@ -93,9 +122,43 @@ func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storag
 									Value: rootUser,
 								},
 								{
-									Name:  "MINIO_ROOT_PASSWORD",
-									Value: rootPassword,
+									Name: "MINIO_ROOT_PASSWORD",
+									ValueFrom: &corev1.EnvVarSource{
+										SecretKeyRef: &corev1.SecretKeySelector{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: randnum + "-minio-secrets",
+											},
+											Key: "rootPassword",
+										},
+									},
 								},
+							},
+							Ports: []corev1.ContainerPort{
+								{
+									ContainerPort: 9000,
+								},
+							},
+							LivenessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Path:   "/minio/health/live",
+										Port:   intstr.FromInt(9000),
+										Scheme: corev1.URISchemeHTTP,
+									},
+								},
+								InitialDelaySeconds: 10,
+								PeriodSeconds:       10,
+							},
+							ReadinessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{
+										Path:   "/minio/health/ready",
+										Port:   intstr.FromInt(9000),
+										Scheme: corev1.URISchemeHTTP,
+									},
+								},
+								InitialDelaySeconds: 5,
+								PeriodSeconds:       5,
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
@@ -119,6 +182,7 @@ func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storag
 			},
 		},
 	}
+
 	_, err = client.AppsV1().Deployments(namespace).Create(context.TODO(), deployment, metav1.CreateOptions{})
 	if err != nil {
 		log.Fatalf("Failed to create deployment: %v", err)
@@ -153,9 +217,11 @@ func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storag
 		ObjectMeta: metav1.ObjectMeta{
 			Name: randnum + "-minio-ingress",
 			Annotations: map[string]string{
-				"kubernetes.io/ingress.class":    "nginx",
-				"cert-manager.io/cluster-issuer": clusterIssuer,
-				//"nginx.ingress.kubernetes.io/proxy-body-size": "unlimited",
+				"kubernetes.io/ingress.class":                        "nginx",
+				"cert-manager.io/cluster-issuer":                     clusterIssuer,
+				"nginx.ingress.kubernetes.io/proxy-body-size":        "0",
+				"nginx.ingress.kubernetes.io/proxy-buffering":        "off",
+				"nginx.ingress.kubernetes.io/ignore-invalid-headers": "off",
 			},
 		},
 		Spec: networkingv1.IngressSpec{
@@ -244,6 +310,18 @@ func DeleteMinioResources(randnum string) error {
 	err = client.AppsV1().Deployments(namespace).Delete(context.TODO(), randnum+"-minio-deployment", metav1.DeleteOptions{})
 	if err != nil {
 		return fmt.Errorf("Failed to delete deployment: %v", err)
+	}
+
+	// Delete Secret
+	err = client.CoreV1().Secrets(namespace).Delete(context.TODO(), randnum+"-minio-secrets", metav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("Failed to delete secret: %v", err)
+	}
+
+	// Delete TLS Secret
+	err = client.CoreV1().Secrets(namespace).Delete(context.TODO(), randnum+"."+os.Getenv("WILDCARD_DOMAIN")+"-tls", metav1.DeleteOptions{})
+	if err != nil {
+		return fmt.Errorf("Failed to delete TLS secret: %v", err)
 	}
 
 	// Delete PVC

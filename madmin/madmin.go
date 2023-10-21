@@ -57,6 +57,7 @@ func Madmin(Id, RootUser, RootPassword, BucketName, AccessKey, SecretKey string)
 		os.Exit(0)
 	}
 
-	log.Printf("%v created, %v created, and %v set successfully!", accountInfo.AccountName, BucketName, AccessKey)
+	//log.Printf("%v created, %v created, and %v set successfully!", accountInfo.AccountName, BucketName, AccessKey)
+	log.Printf("%v rootuser, %v rootpassword", RootUser, RootPassword)
 	return nil
 }
