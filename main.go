@@ -1,8 +1,12 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/stenstromen/miniomatic/controller"
@@ -20,6 +24,8 @@ func init() {
 	}
 }
 
+const APIVersion = "/v1"
+
 func main() {
 	err := godotenv.Load()
 	if err != nil {
@@ -28,17 +34,32 @@ func main() {
 
 	router := mux.NewRouter()
 
-	router.HandleFunc("/api", controller.GetItems).Methods("GET")
-	router.HandleFunc("/api/{id}", controller.GetItem).Methods("GET")
-	router.HandleFunc("/api", controller.CreateItem).Methods("POST")
-	router.HandleFunc("/items/{id}", controller.UpdateItem).Methods("PUT")
-	router.HandleFunc("/items/{id}", controller.UpdateItem).Methods("PATCH")
-	router.HandleFunc("/api/{id}", controller.DeleteItem).Methods("DELETE")
+	router.HandleFunc(APIVersion+"/instances", controller.GetItems).Methods("GET")
+	router.HandleFunc(APIVersion+"/instances/{id}", controller.GetItem).Methods("GET")
+	router.HandleFunc(APIVersion+"/instances", controller.CreateItem).Methods("POST")
+	router.HandleFunc(APIVersion+"/instances/{id}", controller.UpdateItem).Methods("PATCH")
+	router.HandleFunc(APIVersion+"/instances/{id}", controller.DeleteItem).Methods("DELETE")
 
-	err = http.ListenAndServe(":8080", router)
+	// Listen for the interrupt signal.
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt)
 
-	if err != nil {
-		log.Fatal("Failed to start server: ", err)
-	}
-	log.Println("Server started on: http://localhost:8080")
+	server := &http.Server{Addr: ":8080", Handler: router}
+
+	log.Println("Server started on: http://:8080")
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil {
+			log.Fatal("Failed to start server: ", err)
+		}
+	}()
+
+	<-stop
+
+	// Set a timeout for the graceful shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	server.Shutdown(ctx)
+	log.Println("Shutting down gracefully...")
 }

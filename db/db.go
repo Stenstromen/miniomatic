@@ -64,6 +64,14 @@ func InsertData(id, initBucket, storage string) error {
 	return nil
 }
 
+func UpdateData(id, initBucket, storage string) error {
+	_, err := db.Exec("UPDATE records SET init_bucket = ?, storage = ? WHERE id = ?", initBucket, storage, id)
+	if err != nil {
+		return fmt.Errorf("failed to update data: %v", err)
+	}
+	return nil
+}
+
 // DeleteData deletes a record by its ID
 func DeleteData(id string) error {
 	result, err := db.Exec("DELETE FROM records WHERE id = ?", id)

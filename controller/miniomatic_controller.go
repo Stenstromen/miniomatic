@@ -97,19 +97,44 @@ func CreateItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateItem(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	for index, item := range model.Items {
-		if item.ID == params["id"] {
-			model.Items = append(model.Items[:index], model.Items[index+1:]...)
-			var updatedItem model.Item
-			_ = json.NewDecoder(r.Body).Decode(&updatedItem)
-			updatedItem.ID = params["id"]
-			model.Items = append(model.Items, updatedItem)
-			json.NewEncoder(w).Encode(updatedItem)
-			return
-		}
+	var post model.Post
+	ID := mux.Vars(r)["id"]
+	if r.ContentLength == 0 {
+		http.Error(w, "Empty request body", http.StatusBadRequest)
+		return
 	}
-	json.NewEncoder(w).Encode(model.Items)
+	_ = json.NewDecoder(r.Body).Decode(&post)
+	Storage := post.Storage
+	InitBucket, err := db.GetDataByID(ID)
+	if err != nil {
+		log.Println(err)
+	}
+	// Validate Storage format
+	validStorageFormat := regexp.MustCompile(`^[0-9]+(Ki|Mi|Gi)$`)
+	if !validStorageFormat.MatchString(Storage) {
+		http.Error(w, "Invalid storage format. Expected format: [Number][Ki|Mi|Gi]", http.StatusBadRequest)
+		return
+	}
+
+	// Try parsing the value using Kubernetes resource package to ensure it's a valid quantity
+	_, err = resource.ParseQuantity(Storage)
+	if err != nil {
+		http.Error(w, "Invalid storage value", http.StatusBadRequest)
+		return
+	}
+
+	k8sclient.ResizeMinioPVC(ID, Storage)
+
+	var resp model.Resp
+	resp.Status = "resizing"
+	resp.ID = ID
+	resp.Storage = post.Storage
+	resp.Bucket = InitBucket.InitBucket
+	resp.URL = "https://" + ID + "." + os.Getenv("WILDCARD_DOMAIN")
+	db.UpdateData(ID, resp.Bucket, Storage)
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(resp)
+
 }
 
 func DeleteItem(w http.ResponseWriter, r *http.Request) {

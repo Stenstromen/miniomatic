@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/stenstromen/miniomatic/db"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -73,6 +74,30 @@ func createMinioSecret(client *kubernetes.Clientset, randnum, namespace, rootPas
 	if err != nil {
 		return fmt.Errorf("failed to create secret: %v", err)
 	}
+	return nil
+}
+
+func ResizeMinioPVC(randnum, storage string) error {
+	db.UpdateStatus(randnum, "resizing")
+	client, err := getK8sClient()
+	if err != nil {
+		return err
+	}
+
+	pvc, err := client.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), randnum+"-minio-pvc", metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to get PVC: %v", err)
+	}
+
+	pvc.Spec.Resources.Requests[corev1.ResourceStorage] = resource.MustParse(storage)
+
+	_, err = client.CoreV1().PersistentVolumeClaims(namespace).Update(context.Background(), pvc, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update PVC: %v", err)
+	}
+
+	db.UpdateStatus(randnum, "ready")
+
 	return nil
 }
 
