@@ -8,6 +8,7 @@ import (
 	"github.com/minio/madmin-go/v3"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/stenstromen/miniomatic/db"
 )
 
 func Madmin(Id, RootUser, RootPassword, BucketName, AccessKey, SecretKey string) error {
@@ -59,5 +60,6 @@ func Madmin(Id, RootUser, RootPassword, BucketName, AccessKey, SecretKey string)
 
 	//log.Printf("%v created, %v created, and %v set successfully!", accountInfo.AccountName, BucketName, AccessKey)
 	log.Printf("%v rootuser, %v rootpassword", RootUser, RootPassword)
+	db.UpdateStatus(Id, "ready")
 	return nil
 }

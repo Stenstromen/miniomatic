@@ -28,11 +28,12 @@ func InitDB() error {
 	// Create table if it doesn't exist
 	query := `
 	CREATE TABLE IF NOT EXISTS records (
+		status TEXT NOT NULL DEFAULT 'provisioning',
 		date TEXT NOT NULL,
 		id TEXT PRIMARY KEY,
 		init_bucket TEXT NOT NULL,
 		url TEXT NOT NULL,
-		storage_gbi INTEGER NOT NULL
+		storage INTEGER NOT NULL
 	);
 	`
 
@@ -43,12 +44,20 @@ func InitDB() error {
 	return nil
 }
 
+func UpdateStatus(id, status string) error {
+	_, err := db.Exec("UPDATE records SET status = ? WHERE id = ?", status, id)
+	if err != nil {
+		return fmt.Errorf("failed to update status: %v", err)
+	}
+	return nil
+}
+
 // InsertData inserts a new record into the database
-func InsertData(id, initBucket string, storageGbi int) error {
+func InsertData(id, initBucket, storage string) error {
 	currentTime := time.Now().Format("2006-01-02 15:04:05")
 	url := "https://" + id + "." + os.Getenv("WILDCARD_DOMAIN")
 
-	_, err := db.Exec("INSERT INTO records (date, id, init_bucket, url, storage_gbi) VALUES (?, ?, ?, ?, ?)", currentTime, id, initBucket, url, storageGbi)
+	_, err := db.Exec("INSERT INTO records (date, id, init_bucket, url, storage) VALUES (?, ?, ?, ?, ?)", currentTime, id, initBucket, url, storage)
 	if err != nil {
 		return fmt.Errorf("failed to insert data: %v", err)
 	}
@@ -75,7 +84,7 @@ func DeleteData(id string) error {
 }
 
 func GetAllData() ([]model.Record, error) {
-	rows, err := db.Query("SELECT date, id, init_bucket, url, storage_gbi FROM records")
+	rows, err := db.Query("SELECT status, date, id, init_bucket, url, storage FROM records")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all data: %v", err)
 	}
@@ -84,7 +93,7 @@ func GetAllData() ([]model.Record, error) {
 	var records []model.Record
 	for rows.Next() {
 		var r model.Record
-		if err := rows.Scan(&r.Date, &r.ID, &r.InitBucket, &r.URL, &r.StorageGbi); err != nil {
+		if err := rows.Scan(&r.Status, &r.Date, &r.ID, &r.InitBucket, &r.URL, &r.Storage); err != nil {
 			return nil, err
 		}
 		records = append(records, r)
@@ -100,10 +109,10 @@ func GetAllData() ([]model.Record, error) {
 
 // GetDataByID retrieves a specific record by its ID
 func GetDataByID(id string) (*model.Record, error) {
-	row := db.QueryRow("SELECT date, id, init_bucket, url, storage_gbi FROM records WHERE id = ?", id)
+	row := db.QueryRow("SELECT status, date, id, init_bucket, url, storage FROM records WHERE id = ?", id)
 
 	var r model.Record
-	if err := row.Scan(&r.Date, &r.ID, &r.InitBucket, &r.URL, &r.StorageGbi); err != nil {
+	if err := row.Scan(&r.Status, &r.Date, &r.ID, &r.InitBucket, &r.URL, &r.Storage); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil // No data found for the given ID
 		}

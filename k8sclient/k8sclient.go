@@ -29,11 +29,11 @@ func getK8sClient() (*kubernetes.Clientset, error) {
 	}
 	config, err := clientcmd.BuildConfigFromFlags("", configFile)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to get Kubernetes config: %v", err)
+		return nil, fmt.Errorf("failed to get Kubernetes config: %v", err)
 	}
 	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create Kubernetes client: %v", err)
+		return nil, fmt.Errorf("failed to create Kubernetes client: %v", err)
 	}
 	return client, nil
 }
@@ -47,11 +47,11 @@ func ensureNamespace(client *kubernetes.Clientset) error {
 			},
 		}, metav1.CreateOptions{})
 		if err != nil {
-			return fmt.Errorf("Failed to create namespace %s: %v", namespace, err)
+			return fmt.Errorf("failed to create namespace %s: %v", namespace, err)
 		}
 		log.Printf("Created namespace %s", namespace)
 	} else if err != nil {
-		return fmt.Errorf("Failed to get namespace %s: %v", namespace, err)
+		return fmt.Errorf("failed to get namespace %s: %v", namespace, err)
 	}
 	return nil
 }
@@ -76,7 +76,7 @@ func createMinioSecret(client *kubernetes.Clientset, randnum, namespace, rootPas
 	return nil
 }
 
-func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storageClassName string, storageGi int) error {
+func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storageClassName, storage string) error {
 	//randnum := rnd.RandomString(false, 6)
 	wildcard_domain := randnum + "." + os.Getenv("WILDCARD_DOMAIN")
 
@@ -116,6 +116,16 @@ func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storag
 							Name:  randnum + "-minio",
 							Image: "minio/minio:latest",
 							Args:  []string{"server", "/data"},
+							Resources: corev1.ResourceRequirements{
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("100m"),
+									corev1.ResourceMemory: resource.MustParse("256Mi"),
+								},
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("1"),
+									corev1.ResourceMemory: resource.MustParse("1Gi"),
+								},
+							},
 							Env: []corev1.EnvVar{
 								{
 									Name:  "MINIO_ROOT_USER",
@@ -261,7 +271,7 @@ func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storag
 		log.Fatalln("Failed to create ingress:", err)
 	}
 
-	storage := storageGi
+	//storage := storageGi
 	fmt.Println("Value of storageGi:", storage)
 
 	// PVC
@@ -274,7 +284,7 @@ func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storag
 			StorageClassName: &storageClassName,
 			Resources: corev1.ResourceRequirements{
 				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: resource.MustParse(fmt.Sprintf("%dGi", storageGi)),
+					corev1.ResourceStorage: resource.MustParse(storage),
 				},
 			},
 		},
@@ -297,37 +307,37 @@ func DeleteMinioResources(randnum string) error {
 	// Delete Ingress
 	err = client.NetworkingV1().Ingresses(namespace).Delete(context.TODO(), randnum+"-minio-ingress", metav1.DeleteOptions{})
 	if err != nil {
-		return fmt.Errorf("Failed to delete ingress: %v", err)
+		return fmt.Errorf("failed to delete ingress: %v", err)
 	}
 
 	// Delete Service
 	err = client.CoreV1().Services(namespace).Delete(context.TODO(), "s-"+randnum+"-minio-service", metav1.DeleteOptions{})
 	if err != nil {
-		return fmt.Errorf("Failed to delete service: %v", err)
+		log.Fatalf("failed to delete service: %v", err)
 	}
 
 	// Delete Deployment
 	err = client.AppsV1().Deployments(namespace).Delete(context.TODO(), randnum+"-minio-deployment", metav1.DeleteOptions{})
 	if err != nil {
-		return fmt.Errorf("Failed to delete deployment: %v", err)
+		log.Fatalf("failed to delete deployment: %v", err)
 	}
 
 	// Delete Secret
 	err = client.CoreV1().Secrets(namespace).Delete(context.TODO(), randnum+"-minio-secrets", metav1.DeleteOptions{})
 	if err != nil {
-		return fmt.Errorf("Failed to delete secret: %v", err)
+		log.Fatalf("failed to delete secret: %v", err)
 	}
 
 	// Delete TLS Secret
 	err = client.CoreV1().Secrets(namespace).Delete(context.TODO(), randnum+"."+os.Getenv("WILDCARD_DOMAIN")+"-tls", metav1.DeleteOptions{})
 	if err != nil {
-		return fmt.Errorf("Failed to delete TLS secret: %v", err)
+		log.Fatalln("failed to delete TLS secret:", err)
 	}
 
 	// Delete PVC
 	err = client.CoreV1().PersistentVolumeClaims(namespace).Delete(context.TODO(), randnum+"-minio-pvc", metav1.DeleteOptions{})
 	if err != nil {
-		return fmt.Errorf("Failed to delete PVC: %v", err)
+		log.Fatalln("failed to delete PVC:", err)
 	}
 
 	return nil

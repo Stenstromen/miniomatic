@@ -2,10 +2,10 @@ package controller
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/gorilla/mux"
@@ -14,6 +14,7 @@ import (
 	"github.com/stenstromen/miniomatic/madmin"
 	"github.com/stenstromen/miniomatic/model"
 	"github.com/stenstromen/miniomatic/rnd"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 func GetItems(w http.ResponseWriter, r *http.Request) {
@@ -46,6 +47,19 @@ func CreateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.NewDecoder(r.Body).Decode(&post)
+	// Validate Storage format
+	validStorageFormat := regexp.MustCompile(`^[0-9]+(Ki|Mi|Gi)$`)
+	if !validStorageFormat.MatchString(post.Storage) {
+		http.Error(w, "Invalid storage format. Expected format: [Number][Ki|Mi|Gi]", http.StatusBadRequest)
+		return
+	}
+
+	// Try parsing the value using Kubernetes resource package to ensure it's a valid quantity
+	_, err := resource.ParseQuantity(post.Storage)
+	if err != nil {
+		http.Error(w, "Invalid storage value", http.StatusBadRequest)
+		return
+	}
 	randnum := rnd.RandomString(false, 6)
 	RootUser := rnd.RandomString(true, 16)
 	RootPassword := rnd.RandomString(true, 16)
@@ -53,10 +67,10 @@ func CreateItem(w http.ResponseWriter, r *http.Request) {
 	SecretKey := rnd.RandomString(true, 33)
 	ClusterIssuer := os.Getenv("CLUSTERISSUER")
 	StorageClassName := os.Getenv("STORAGECLASSNAME")
-	Gigabytes := post.Gi
+	Storage := post.Storage
 
 	go func() {
-		err := k8sclient.CreateMinioResources(randnum, RootUser, RootPassword, ClusterIssuer, StorageClassName, Gigabytes)
+		err := k8sclient.CreateMinioResources(randnum, RootUser, RootPassword, ClusterIssuer, StorageClassName, Storage)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -70,13 +84,14 @@ func CreateItem(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	var resp model.Resp
+	resp.Status = "provisioning"
 	resp.ID = randnum
-	resp.Gi = fmt.Sprintf("%d", post.Gi)
+	resp.Storage = post.Storage
 	resp.Bucket = post.Bucket
 	resp.URL = "https://" + randnum + "." + os.Getenv("WILDCARD_DOMAIN")
 	resp.AccessKey = AccessKey
 	resp.SecretKey = SecretKey
-	db.InsertData(randnum, post.Bucket, Gigabytes)
+	db.InsertData(randnum, post.Bucket, Storage)
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(resp)
 }
