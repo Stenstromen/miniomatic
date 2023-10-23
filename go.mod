@@ -11,6 +11,8 @@ require (
 	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2
 )
 
+require github.com/josharian/intern v1.0.0 // indirect
+
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
