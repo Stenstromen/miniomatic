@@ -24,14 +24,6 @@ func respondWithError(w http.ResponseWriter, code int, message string) {
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
-// Middleware to set content type
-func setJSONHeader(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		next.ServeHTTP(w, r)
-	})
-}
-
 func validateStorageFormat(storage string) bool {
 	validStorageFormat := regexp.MustCompile(`^[0-9]+(Ki|Mi|Gi)$`)
 	return validStorageFormat.MatchString(storage)

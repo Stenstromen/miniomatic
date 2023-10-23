@@ -67,6 +67,7 @@ This application has been tested on:
 #### 4. STORAGECLASSNAME
 * **Description**: Specifies the name of the storage class to be used for creating persistent volumes.
 * **Default**: `local-pv`
+* **Note**: Storage Class needs allowVolumeExpansion set to true in order to be able to resize the volumes.
 
 #### 5. API_KEY
 * **Description**: Specifies the API key to be used for authenticating requests to the API.
@@ -108,6 +109,7 @@ This application has been tested on:
 * Body:
   * `storage` - The new size of the instance in Ki, Mi or Gi (10Gi for example).
 * Description: Updates the storage size of an instance and returns the updated details
+* Note: The storage size can only be increased, not decreased. Also, Storage Class needs allowVolumeExpansion set to true in order to be able to resize the volumes
 
 #### 5. Delete an instance
 * **URL** `/v1/instances/{id}`
