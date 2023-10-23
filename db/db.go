@@ -2,7 +2,7 @@ package db
 
 import (
 	"database/sql"
-	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -22,7 +22,7 @@ func InitDB() error {
 	var err error
 	db, err = sql.Open("sqlite3", dbPath)
 	if err != nil {
-		return fmt.Errorf("failed to open database: %v", err)
+		log.Fatalf("failed to open database: %v", err)
 	}
 
 	// Create table if it doesn't exist
@@ -38,7 +38,7 @@ func InitDB() error {
 	`
 
 	if _, err := db.Exec(query); err != nil {
-		return fmt.Errorf("failed to create table: %v", err)
+		log.Fatalf("failed to create table: %v", err)
 	}
 
 	return nil
@@ -47,7 +47,7 @@ func InitDB() error {
 func UpdateStatus(id, status string) error {
 	_, err := db.Exec("UPDATE records SET status = ? WHERE id = ?", status, id)
 	if err != nil {
-		return fmt.Errorf("failed to update status: %v", err)
+		log.Fatalf("failed to update status: %v", err)
 	}
 	return nil
 }
@@ -59,7 +59,7 @@ func InsertData(id, initBucket, storage string) error {
 
 	_, err := db.Exec("INSERT INTO records (date, id, init_bucket, url, storage) VALUES (?, ?, ?, ?, ?)", currentTime, id, initBucket, url, storage)
 	if err != nil {
-		return fmt.Errorf("failed to insert data: %v", err)
+		log.Fatalf("failed to insert data: %v", err)
 	}
 	return nil
 }
@@ -67,7 +67,7 @@ func InsertData(id, initBucket, storage string) error {
 func UpdateData(id, initBucket, storage string) error {
 	_, err := db.Exec("UPDATE records SET init_bucket = ?, storage = ? WHERE id = ?", initBucket, storage, id)
 	if err != nil {
-		return fmt.Errorf("failed to update data: %v", err)
+		log.Fatalf("failed to update data: %v", err)
 	}
 	return nil
 }
@@ -76,16 +76,16 @@ func UpdateData(id, initBucket, storage string) error {
 func DeleteData(id string) error {
 	result, err := db.Exec("DELETE FROM records WHERE id = ?", id)
 	if err != nil {
-		return fmt.Errorf("failed to delete data: %v", err)
+		log.Fatalf("failed to delete data: %v", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to retrieve rows affected count: %v", err)
+		log.Fatalf("failed to retrieve rows affected count: %v", err)
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("no record found with ID %s", id)
+		log.Fatalf("no record found with ID %s", id)
 	}
 
 	return nil
@@ -94,7 +94,7 @@ func DeleteData(id string) error {
 func GetAllData() ([]model.Record, error) {
 	rows, err := db.Query("SELECT status, date, id, init_bucket, url, storage FROM records")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get all data: %v", err)
+		log.Fatalf("failed to get all data: %v", err)
 	}
 	defer rows.Close()
 
@@ -124,7 +124,7 @@ func GetDataByID(id string) (*model.Record, error) {
 		if err == sql.ErrNoRows {
 			return nil, nil // No data found for the given ID
 		}
-		return nil, fmt.Errorf("failed to get data by ID: %v", err)
+		log.Fatalf("failed to get data by ID: %v", err)
 	}
 
 	return &r, nil

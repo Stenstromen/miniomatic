@@ -2,7 +2,6 @@ package k8sclient
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -17,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/utils/pointer"
 )
 
 const namespace = "miniomatic"
@@ -30,11 +30,11 @@ func getK8sClient() (*kubernetes.Clientset, error) {
 	}
 	config, err := clientcmd.BuildConfigFromFlags("", configFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get Kubernetes config: %v", err)
+		log.Fatalf("failed to get Kubernetes config: %v", err)
 	}
 	client, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Kubernetes client: %v", err)
+		log.Fatalf("failed to create Kubernetes client: %v", err)
 	}
 	return client, nil
 }
@@ -48,11 +48,11 @@ func ensureNamespace(client *kubernetes.Clientset) error {
 			},
 		}, metav1.CreateOptions{})
 		if err != nil {
-			return fmt.Errorf("failed to create namespace %s: %v", namespace, err)
+			log.Fatalf("failed to create namespace %s: %v", namespace, err)
 		}
 		log.Printf("Created namespace %s", namespace)
 	} else if err != nil {
-		return fmt.Errorf("failed to get namespace %s: %v", namespace, err)
+		log.Fatalf("failed to get namespace %s: %v", namespace, err)
 	}
 	return nil
 }
@@ -72,7 +72,7 @@ func createMinioSecret(client *kubernetes.Clientset, randnum, namespace, rootPas
 	// Create the secret in the Kubernetes cluster
 	_, err := client.CoreV1().Secrets(namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to create secret: %v", err)
+		log.Fatalf("failed to create secret: %v", err)
 	}
 	return nil
 }
@@ -86,14 +86,14 @@ func ResizeMinioPVC(randnum, storage string) error {
 
 	pvc, err := client.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), randnum+"-minio-pvc", metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to get PVC: %v", err)
+		log.Fatalf("failed to get PVC: %v", err)
 	}
 
 	pvc.Spec.Resources.Requests[corev1.ResourceStorage] = resource.MustParse(storage)
 
 	_, err = client.CoreV1().PersistentVolumeClaims(namespace).Update(context.Background(), pvc, metav1.UpdateOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to update PVC: %v", err)
+		log.Fatalf("failed to update PVC: %v", err)
 	}
 
 	db.UpdateStatus(randnum, "ready")
@@ -252,7 +252,6 @@ func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storag
 		ObjectMeta: metav1.ObjectMeta{
 			Name: randnum + "-minio-ingress",
 			Annotations: map[string]string{
-				"kubernetes.io/ingress.class":                        "nginx",
 				"cert-manager.io/cluster-issuer":                     clusterIssuer,
 				"nginx.ingress.kubernetes.io/proxy-body-size":        "0",
 				"nginx.ingress.kubernetes.io/proxy-buffering":        "off",
@@ -260,6 +259,7 @@ func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storag
 			},
 		},
 		Spec: networkingv1.IngressSpec{
+			IngressClassName: pointer.String("nginx"),
 			Rules: []networkingv1.IngressRule{
 				{
 					Host: host,
@@ -296,9 +296,6 @@ func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storag
 		log.Fatalln("Failed to create ingress:", err)
 	}
 
-	//storage := storageGi
-	fmt.Println("Value of storageGi:", storage)
-
 	// PVC
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
@@ -314,7 +311,6 @@ func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storag
 			},
 		},
 	}
-	fmt.Printf("PVC Object: %+v\n", pvc)
 	_, err = client.CoreV1().PersistentVolumeClaims(namespace).Create(context.TODO(), pvc, metav1.CreateOptions{})
 	if err != nil {
 		log.Fatalln("Failed to create PVC:", err)
@@ -332,7 +328,7 @@ func DeleteMinioResources(randnum string) error {
 	// Delete Ingress
 	err = client.NetworkingV1().Ingresses(namespace).Delete(context.TODO(), randnum+"-minio-ingress", metav1.DeleteOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to delete ingress: %v", err)
+		log.Fatalf("failed to delete ingress: %v", err)
 	}
 
 	// Delete Service

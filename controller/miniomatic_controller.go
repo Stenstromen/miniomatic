@@ -17,47 +17,69 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
+// Common error helper
+func respondWithError(w http.ResponseWriter, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
+}
+
+// Middleware to set content type
+func setJSONHeader(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func validateStorageFormat(storage string) bool {
+	validStorageFormat := regexp.MustCompile(`^[0-9]+(Ki|Mi|Gi)$`)
+	return validStorageFormat.MatchString(storage)
+}
+
 func GetItems(w http.ResponseWriter, r *http.Request) {
 	items, err := db.GetAllData()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-
+	if len(items) == 0 {
+		respondWithError(w, http.StatusNotFound, "No records found")
+		return
+	}
 	json.NewEncoder(w).Encode(items)
-
 }
 
 func GetItem(w http.ResponseWriter, r *http.Request) {
 	item, err := db.GetDataByID(mux.Vars(r)["id"])
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if item == nil {
+		respondWithError(w, http.StatusNotFound, "No record found")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	json.NewEncoder(w).Encode(item)
 }
 
 func CreateItem(w http.ResponseWriter, r *http.Request) {
 	var post model.Post
 	if r.ContentLength == 0 {
-		http.Error(w, "Empty request body", http.StatusBadRequest)
+		respondWithError(w, http.StatusBadRequest, "Empty request body")
 		return
 	}
 	_ = json.NewDecoder(r.Body).Decode(&post)
-	// Validate Storage format
-	validStorageFormat := regexp.MustCompile(`^[0-9]+(Ki|Mi|Gi)$`)
-	if !validStorageFormat.MatchString(post.Storage) {
-		http.Error(w, "Invalid storage format. Expected format: [Number][Ki|Mi|Gi]", http.StatusBadRequest)
+
+	if !validateStorageFormat(post.Storage) {
+		respondWithError(w, http.StatusBadRequest, "Invalid storage format. Expected format: [Number][Ki|Mi|Gi]")
 		return
 	}
 
 	// Try parsing the value using Kubernetes resource package to ensure it's a valid quantity
 	_, err := resource.ParseQuantity(post.Storage)
 	if err != nil {
-		http.Error(w, "Invalid storage value", http.StatusBadRequest)
+		respondWithError(w, http.StatusBadRequest, "Invalid storage value")
 		return
 	}
 	randnum := rnd.RandomString(false, 6)
@@ -66,7 +88,13 @@ func CreateItem(w http.ResponseWriter, r *http.Request) {
 	AccessKey := rnd.RandomString(true, 17)
 	SecretKey := rnd.RandomString(true, 33)
 	ClusterIssuer := os.Getenv("CLUSTERISSUER")
+	if ClusterIssuer == "" {
+		ClusterIssuer = "letsencrypt"
+	}
 	StorageClassName := os.Getenv("STORAGECLASSNAME")
+	if StorageClassName == "" {
+		StorageClassName = "local-pv"
+	}
 	Storage := post.Storage
 
 	go func() {
@@ -92,38 +120,37 @@ func CreateItem(w http.ResponseWriter, r *http.Request) {
 	resp.AccessKey = AccessKey
 	resp.SecretKey = SecretKey
 	db.InsertData(randnum, post.Bucket, Storage)
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(resp)
 }
 
 func UpdateItem(w http.ResponseWriter, r *http.Request) {
 	var post model.Post
 	ID := mux.Vars(r)["id"]
+
+	InitBucket, err := db.GetDataByID(ID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	if r.ContentLength == 0 {
-		http.Error(w, "Empty request body", http.StatusBadRequest)
+		respondWithError(w, http.StatusBadRequest, "Empty request body")
 		return
 	}
 	_ = json.NewDecoder(r.Body).Decode(&post)
-	Storage := post.Storage
-	InitBucket, err := db.GetDataByID(ID)
-	if err != nil {
-		log.Println(err)
-	}
-	// Validate Storage format
-	validStorageFormat := regexp.MustCompile(`^[0-9]+(Ki|Mi|Gi)$`)
-	if !validStorageFormat.MatchString(Storage) {
-		http.Error(w, "Invalid storage format. Expected format: [Number][Ki|Mi|Gi]", http.StatusBadRequest)
+	if !validateStorageFormat(post.Storage) {
+		respondWithError(w, http.StatusBadRequest, "Invalid storage format. Expected format: [Number][Ki|Mi|Gi]")
 		return
 	}
 
 	// Try parsing the value using Kubernetes resource package to ensure it's a valid quantity
-	_, err = resource.ParseQuantity(Storage)
+	_, err = resource.ParseQuantity(post.Storage)
 	if err != nil {
-		http.Error(w, "Invalid storage value", http.StatusBadRequest)
+		respondWithError(w, http.StatusBadRequest, "Invalid storage value")
 		return
 	}
 
-	k8sclient.ResizeMinioPVC(ID, Storage)
+	k8sclient.ResizeMinioPVC(ID, post.Storage)
 
 	var resp model.Resp
 	resp.Status = "resizing"
@@ -131,8 +158,8 @@ func UpdateItem(w http.ResponseWriter, r *http.Request) {
 	resp.Storage = post.Storage
 	resp.Bucket = InitBucket.InitBucket
 	resp.URL = "https://" + ID + "." + os.Getenv("WILDCARD_DOMAIN")
-	db.UpdateData(ID, resp.Bucket, Storage)
-	w.WriteHeader(http.StatusCreated)
+	db.UpdateData(ID, resp.Bucket, post.Storage)
+	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(resp)
 
 }
@@ -144,11 +171,9 @@ func DeleteItem(w http.ResponseWriter, r *http.Request) {
 	err := db.DeleteData(id)
 	if err != nil {
 		if strings.Contains(err.Error(), "no record found with ID") {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			respondWithError(w, http.StatusNotFound, err.Error())
 		} else {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			respondWithError(w, http.StatusInternalServerError, "Internal Server Error")
 		}
 		return
 	}

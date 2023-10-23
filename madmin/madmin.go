@@ -32,14 +32,6 @@ func Madmin(Id, RootUser, RootPassword, BucketName, AccessKey, SecretKey string)
 		log.Fatalln(err)
 	}
 
-	accountInfo, err := madminClient.AccountInfo(context.Background(), madmin.AccountOpts{})
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	log.Println(accountInfo.AccountName)
-	log.Println(string(accountInfo.Policy))
-
 	// Initialize standard MinIO client
 	minioClient, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(AccessKey, SecretKey, ""),
@@ -50,7 +42,7 @@ func Madmin(Id, RootUser, RootPassword, BucketName, AccessKey, SecretKey string)
 	}
 
 	// Create a new bucket for the user
-	location := "us-east-1" // Region; adjust as necessary
+	location := "eu-north-1"
 
 	err = minioClient.MakeBucket(context.Background(), BucketName, minio.MakeBucketOptions{Region: location})
 	if err != nil {
@@ -58,8 +50,6 @@ func Madmin(Id, RootUser, RootPassword, BucketName, AccessKey, SecretKey string)
 		os.Exit(0)
 	}
 
-	//log.Printf("%v created, %v created, and %v set successfully!", accountInfo.AccountName, BucketName, AccessKey)
-	log.Printf("%v rootuser, %v rootpassword", RootUser, RootPassword)
 	db.UpdateStatus(Id, "ready")
 	return nil
 }
