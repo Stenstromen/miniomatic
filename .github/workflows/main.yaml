@@ -49,8 +49,8 @@ jobs:
         with:
           push: true
           tags: |
-            ghcr.io/${{ env.OWNER_LC }}/${{ env.IMAGE_NAME }}:latest
-            ghcr.io/${{ env.OWNER_LC }}/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}
+            ghcr.io/stenstromen/${{ env.IMAGE_NAME }}:latest
+            ghcr.io/stenstromen/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}
           platforms: linux/amd64,linux/arm64
 
       - name: Run GoReleaser
