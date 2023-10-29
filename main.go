@@ -61,9 +61,10 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
+
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file:", err)
+		log.Printf("Error loading .env file or not found: %v. Using default environment variables.", err)
 	}
 
 	router := mux.NewRouter()
