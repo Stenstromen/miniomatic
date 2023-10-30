@@ -48,6 +48,24 @@ ghcr.io/stenstromen/miniomatic:latest
 # The API will be available at http://localhost:8080
 ```
 
+### Go Binary
+You can run the application using the Go binary from the [Releases page](https://github.com/Stenstromen/miniomatic/releases/latest/):
+
+```bash
+git clone https://github.com/Stenstromen/miniomatic.git
+cd miniomatic
+cp .env_example .env
+# Edit .env file and set the required environment variables
+
+# Download the binary from the Releases page and place it in the miniomatic directory
+tar -xvf miniomatic_*_*.tar.gz 
+chmod +x miniomatic
+
+./miniomatic
+
+# The API will be available at http://localhost:8080
+```
+
 ### Go Build
 You can build miniomatic using `go build`:
 
