@@ -4,6 +4,7 @@ MinioMatic is a backend service API for [Minio](https://minio.io/) that provides
 
 ## Table of Contents
 * [Installation](#installation)
+* [Example Usage](#example-usage)
 * [Requirements](#requirements)
 * [Environment Variables](#environment-variables)
 * [API Documentation](#api-documentation)
@@ -80,6 +81,101 @@ cp .env_example .env
 ./miniomatic
 
 # The API will be available at http://localhost:8080
+```
+
+## Example Usage
+
+Start miniomatic using the instructions above. The API will be available at http://localhost:8080 and the API-Key is set to `secret`.
+
+All examples below use [jq](https://stedolan.github.io/jq/) for formatting the JSON responses.
+
+### Create a new instance
+
+Create a new instance with an initial bucket named "mybucket" and storage size "2Gi":
+
+**(!!!) Note that the accesskey and secretkey are only returned once, so make sure to save them somewhere safe.**
+
+```bash
+curl -s -X POST -H "X-API-KEY: secret" -H "Content-Type: application/json" -d '{"bucket":"mybucket", "storage":"2Gi"}' http://localhost:8080/v1/instances|jq
+```
+```json
+{
+  "status": "provisioning",
+  "id": "4yucnm",
+  "storage": "2Gi",
+  "bucket": "mybucket",
+  "url": "https://4yucnm.minio.example.com",
+  "accesskey": "K1w0xFmPSmY4y43lL",
+  "secretkey": "8icO32H5VXOOKnw9V9Zi5s3375fdhCO7a"
+}
+```
+
+### List the instance and get the status
+
+```bash
+curl -s -X GET -H "X-API-KEY: secret" http://localhost:8080/v1/instances/4yucnm|jq
+```
+```json
+{
+  "status": "ready",
+  "date": "1999-12-31 23:59:50",
+  "id": "4yucnm",
+  "initbucket": "mybucket",
+  "url": "https://4yucnm.minio.example.com",
+  "storage": "2Gi"
+}
+```
+
+### List all instances
+
+```bash
+curl -s -X GET -H "X-API-KEY: secret" http://localhost:8080/v1/instances|jq
+``` 
+```json
+[
+  {
+    "status": "ready",
+    "date": "1999-12-31 23:59:50",
+    "id": "4yucnm",
+    "initbucket": "mybucket",
+    "url": "https://4yucnm.minio.example.com",
+    "storage": "2Gi"
+  },
+  {
+    "status": "ready",
+    "date": "1999-12-31 23:59:59",
+    "id": "ho72wa",
+    "initbucket": "yourbucket",
+    "url": "https://ho72wa.minio.example.com",
+    "storage": "4Gi"
+  }
+]
+```
+
+### Update the storage size of an instance
+
+```bash
+curl -s -X PATCH -H "X-API-KEY: secret" -H "Content-Type: application/json" -d '{"storage":"4Gi"}' http://localhost:8080/v1/instances/4yucnm|jq
+```
+```json
+{
+  "status": "resizing",
+  "id": "4yucnm",
+  "storage": "4Gi",
+  "bucket": "mybucket",
+  "url": "https://4yucnm.minio.example.com"
+}
+```
+
+### Delete an instance
+
+```bash
+curl -s -X DELETE -H "X-API-KEY: secret" http://localhost:8080/v1/instances/4yucnm|jq
+```
+```json
+{
+  "status": "Deletion in progress"
+}
 ```
 
 ## Requirements
