@@ -1,6 +1,6 @@
 module github.com/stenstromen/miniomatic
 
-go 1.21.3
+go 1.21
 
 replace github.com/stenstromen/miniomatic => /
 
