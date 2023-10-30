@@ -10,6 +10,44 @@ MinioMatic is a backend service API for [Minio](https://minio.io/) that provides
 
 ## Installation
 
+### Docker Image
+You can run the application using the Docker image:
+
+Using environment variables file:
+```bash
+git clone https://github.com/Stenstromen/miniomatic.git
+cd miniomatic
+cp .env_example .env
+
+# Edit .env file and set the required environment variables
+
+docker run --rm -d \
+-p8080:8080 \
+--env-file .env \
+-v $PWD/assets/:/app/assets:rw \
+-v $HOME/.kube/config:/app/config:ro \
+ghcr.io/stenstromen/miniomatic:latest
+
+# The API will be available at http://localhost:8080
+```
+
+Using discrete environment variables:
+```bash
+docker run --rm -d \
+-p8080:8080 \
+-e KUBECONFIG_FILE=/app/config \
+-e WILDCARD_DOMAIN=minio.example.com \
+-e CLUSTERISSUER=letsencrypt \
+-e STORAGECLASSNAME=local-pv \
+-e API_KEY=mysecretapikey \
+-e ALLOWED_ORIGIN=https://example.com \
+-v $PWD/assets/:/app/assets:rw \
+-v $HOME/.kube/config:/app/config:ro \
+ghcr.io/stenstromen/miniomatic:latest
+
+# The API will be available at http://localhost:8080
+```
+
 ### Go Build
 You can build miniomatic using `go build`:
 
