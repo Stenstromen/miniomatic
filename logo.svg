@@ -1,0 +1,32 @@
+<svg width="220px" height="100px" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <!-- Define the style for the logo -->
+  <style type="text/css">
+    .miniomatic-text {
+      font-family: 'Arial', sans-serif;
+      font-weight: bold;
+      fill: #1a1a1a;
+    }
+    .go-style {
+      fill: #00ADD8; /* Go language color */
+    }
+    .kubernetes-style {
+      fill: #326ce5; /* Kubernetes color */
+    }
+  </style>
+  
+  <!-- Define the background -->
+  <rect width="100%" height="80%" fill="white"/>
+  
+  <!-- Add the "miniomatic" text -->
+  <text x="10" y="57" class="miniomatic-text" font-size="30">Minio<span class="go-style">o</span>Matic</text>
+  
+  <!-- Add a simplistic representation of a Kubernetes symbol moved to the right -->
+  <circle cx="190" cy="35" r="10" class="kubernetes-style" />
+  <circle cx="180" cy="50" r="10" class="kubernetes-style" />
+  <circle cx="200" cy="50" r="10" class="kubernetes-style" />
+  
+  <!-- Add a simplistic representation of interconnected instances, adjusted for the new positions -->
+  <line x1="180" y1="50" x2="190" y2="40" stroke="#326ce5" stroke-width="2"/>
+  <line x1="200" y1="50" x2="190" y2="40" stroke="#326ce5" stroke-width="2"/>
+  <line x1="180" y1="50" x2="200" y2="50" stroke="#326ce5" stroke-width="2"/>
+</svg>

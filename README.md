@@ -1,4 +1,4 @@
-# MinioMatic
+![MinioMatic Logo](./logo.svg)
 
 MinioMatic is a backend service API for [Minio](https://minio.io/) that provides a simple way to create and manage Minio instances on Kubernetes. It is built using [Golang](https://golang.org/).
 
