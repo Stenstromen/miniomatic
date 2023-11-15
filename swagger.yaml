@@ -1,0 +1,112 @@
+openapi: 3.0.0
+info:
+  title: Miniomatic API
+  version: 1.0.0
+tags:
+  - name: Instances
+    description: Operations related to MinIO instances management
+components:
+  securitySchemes:
+    ApiKeyAuth:  
+      type: apiKey
+      in: header 
+      name: X-API-KEY
+security:
+  - ApiKeyAuth: []
+paths:
+  /v1/instances:
+    get:
+      tags:
+        - Instances
+      summary: Returns a list of all instances
+      responses:
+        '200':
+          description: A list of instances
+        '404':
+          description: No records found
+        '500':
+          description: Internal Server Error
+    post:
+      tags:
+        - Instances
+      summary: Creates a new instance and returns its details
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bucket:
+                  type: string
+                storage:
+                  type: string
+      responses:
+        '202':
+          description: Instance creation initiated
+        '400':
+          description: Bad Request (Empty request body or invalid storage format)
+        '500':
+          description: Internal Server Error
+
+  /v1/instances/{id}:
+    get:
+      tags:
+        - Instances
+      summary: Returns a single instance
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Instance details
+        '404':
+          description: No record found
+        '500':
+          description: Internal Server Error
+    patch:
+      tags:
+        - Instances
+      summary: Updates the storage size of an instance and returns the updated details
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                storage:
+                  type: string
+      responses:
+        '202':
+          description: Instance update initiated
+        '400':
+          description: Bad Request (Invalid storage format or value)
+        '500':
+          description: Internal Server Error
+    delete:
+      tags:
+        - Instances
+      summary: Deletes a specific instance by its ID
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '202':
+          description: Deletion initiated
+        '404':
+          description: No record found with ID
+        '500':
+          description: Internal Server Error
