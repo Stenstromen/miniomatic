@@ -50,6 +50,10 @@ jobs:
             ghcr.io/stenstromen/${{ env.IMAGE_NAME }}:${{ github.event.release.tag_name }}
           platforms: linux/amd64,linux/arm64
 
+      - uses: actions/setup-go@v4
+        with:
+          go-version: stable
+          
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v4
         with:
