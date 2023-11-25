@@ -6,14 +6,12 @@ import (
 	"os"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3" // SQLite3 driver
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/stenstromen/miniomatic/model"
 )
 
 var (
-	// Database instance
-	db *sql.DB
-	// Database file path
+	db     *sql.DB
 	dbPath = "assets/db.sqlite"
 )
 
@@ -54,8 +52,7 @@ func UpdateStatus(id, status string) error {
 
 // InsertData inserts a new record into the database
 func InsertData(id, initBucket, storage string) error {
-	currentTime := time.Now().Format("2006-01-02 15:04:05")
-	url := "https://" + id + "." + os.Getenv("WILDCARD_DOMAIN")
+	currentTime, url := time.Now().Format("2006-01-02 15:04:05"), "https://"+id+"."+os.Getenv("WILDCARD_DOMAIN")
 
 	_, err := db.Exec("INSERT INTO records (date, id, init_bucket, url, storage) VALUES (?, ?, ?, ?, ?)", currentTime, id, initBucket, url, storage)
 	if err != nil {

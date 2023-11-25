@@ -2,11 +2,13 @@ package k8sclient
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 
 	"github.com/stenstromen/miniomatic/db"
+	"github.com/stenstromen/miniomatic/model"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -16,7 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 const namespace = "miniomatic"
@@ -78,7 +80,10 @@ func createMinioSecret(client *kubernetes.Clientset, randnum, namespace, rootPas
 }
 
 func ResizeMinioPVC(randnum, storage string) error {
-	db.UpdateStatus(randnum, "resizing")
+	if err := db.UpdateStatus(randnum, "resizing"); err != nil {
+		return fmt.Errorf("failed to update status to resizing: %v", err)
+	}
+
 	client, err := getK8sClient()
 	if err != nil {
 		return err
@@ -96,13 +101,15 @@ func ResizeMinioPVC(randnum, storage string) error {
 		log.Fatalf("failed to update PVC: %v", err)
 	}
 
-	db.UpdateStatus(randnum, "ready")
+	if err := db.UpdateStatus(randnum, "ready"); err != nil {
+		return fmt.Errorf("failed to update status to ready: %v", err)
+	}
 
 	return nil
 }
 
-func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storageClassName, storage string) error {
-	//randnum := rnd.RandomString(false, 6)
+func CreateMinioResources(creds model.Credentials, clusterIssuer, storageClassName, storage string) error {
+	randnum, rootUser, rootPassword := creds.RandNum, creds.RootUser, creds.RootPassword
 	wildcard_domain := randnum + "." + os.Getenv("WILDCARD_DOMAIN")
 
 	// Get the Kubernetes configuration.
@@ -259,7 +266,7 @@ func CreateMinioResources(randnum, rootUser, rootPassword, clusterIssuer, storag
 			},
 		},
 		Spec: networkingv1.IngressSpec{
-			IngressClassName: pointer.String("nginx"),
+			IngressClassName: ptr.To("nginx"),
 			Rules: []networkingv1.IngressRule{
 				{
 					Host: host,
