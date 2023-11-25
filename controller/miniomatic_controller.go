@@ -17,7 +17,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
-// Common error helper
 func respondWithError(w http.ResponseWriter, code int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
@@ -57,10 +56,23 @@ func GetItem(w http.ResponseWriter, r *http.Request) {
 
 func CreateItem(w http.ResponseWriter, r *http.Request) {
 	var post model.Post
+	creds := model.Credentials{
+		RandNum:      rnd.RandomString(false, 6),
+		RootUser:     rnd.RandomString(true, 16),
+		RootPassword: rnd.RandomString(true, 16),
+	}
+	AccessKey, SecretKey, ClusterIssuer, StorageClassName := rnd.RandomString(true, 17), rnd.RandomString(true, 33), os.Getenv("CLUSTERISSUER"), os.Getenv("STORAGECLASSNAME")
+	if ClusterIssuer == "" {
+		ClusterIssuer = "letsencrypt"
+	}
+	if StorageClassName == "" {
+		StorageClassName = "local-pv"
+	}
 	if r.ContentLength == 0 {
 		respondWithError(w, http.StatusBadRequest, "Empty request body")
 		return
 	}
+
 	_ = json.NewDecoder(r.Body).Decode(&post)
 
 	if !validateStorageFormat(post.Storage) {
@@ -68,50 +80,37 @@ func CreateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try parsing the value using Kubernetes resource package to ensure it's a valid quantity
 	_, err := resource.ParseQuantity(post.Storage)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid storage value")
 		return
 	}
-	randnum := rnd.RandomString(false, 6)
-	RootUser := rnd.RandomString(true, 16)
-	RootPassword := rnd.RandomString(true, 16)
-	AccessKey := rnd.RandomString(true, 17)
-	SecretKey := rnd.RandomString(true, 33)
-	ClusterIssuer := os.Getenv("CLUSTERISSUER")
-	if ClusterIssuer == "" {
-		ClusterIssuer = "letsencrypt"
-	}
-	StorageClassName := os.Getenv("STORAGECLASSNAME")
-	if StorageClassName == "" {
-		StorageClassName = "local-pv"
-	}
-	Storage := post.Storage
 
 	go func() {
-		err := k8sclient.CreateMinioResources(randnum, RootUser, RootPassword, ClusterIssuer, StorageClassName, Storage)
+		err := k8sclient.CreateMinioResources(creds, ClusterIssuer, StorageClassName, post.Storage)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		err = madmin.Madmin(randnum, RootUser, RootPassword, post.Bucket, AccessKey, SecretKey)
+		err = madmin.Madmin(creds, post.Bucket, AccessKey, SecretKey)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}()
 
-	var resp model.Resp
-	resp.Status = "provisioning"
-	resp.ID = randnum
-	resp.Storage = post.Storage
-	resp.Bucket = post.Bucket
-	resp.URL = "https://" + randnum + "." + os.Getenv("WILDCARD_DOMAIN")
-	resp.AccessKey = AccessKey
-	resp.SecretKey = SecretKey
-	db.InsertData(randnum, post.Bucket, Storage)
+	resp := model.Resp{
+		Status:    "provisioning",
+		ID:        creds.RandNum,
+		Storage:   post.Storage,
+		Bucket:    post.Bucket,
+		URL:       "https://" + creds.RandNum + "." + os.Getenv("WILDCARD_DOMAIN"),
+		AccessKey: AccessKey,
+		SecretKey: SecretKey,
+	}
+
+	db.InsertData(creds.RandNum, post.Bucket, post.Storage)
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(resp)
 }
@@ -135,7 +134,6 @@ func UpdateItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Try parsing the value using Kubernetes resource package to ensure it's a valid quantity
 	_, err = resource.ParseQuantity(post.Storage)
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid storage value")
@@ -144,12 +142,13 @@ func UpdateItem(w http.ResponseWriter, r *http.Request) {
 
 	k8sclient.ResizeMinioPVC(ID, post.Storage)
 
-	var resp model.Resp
-	resp.Status = "resizing"
-	resp.ID = ID
-	resp.Storage = post.Storage
-	resp.Bucket = InitBucket.InitBucket
-	resp.URL = "https://" + ID + "." + os.Getenv("WILDCARD_DOMAIN")
+	resp := model.Resp{
+		Status:  "resizing",
+		ID:      ID,
+		Storage: post.Storage,
+		Bucket:  InitBucket.InitBucket,
+		URL:     "https://" + ID + "." + os.Getenv("WILDCARD_DOMAIN"),
+	}
 	db.UpdateData(ID, resp.Bucket, post.Storage)
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(resp)
@@ -157,8 +156,7 @@ func UpdateItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeleteItem(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	id := params["id"]
+	id := mux.Vars(r)["id"]
 
 	err := db.DeleteData(id)
 	if err != nil {
@@ -170,14 +168,12 @@ func DeleteItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Launch a goroutine to delete the Kubernetes resources associated with this ID
 	go func() {
 		if err := k8sclient.DeleteMinioResources(id); err != nil {
 			log.Printf("Error deleting resources for ID %s: %v", id, err)
 		}
 	}()
 
-	// Immediately respond with 202 Accepted
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]string{"status": "Deletion in progress"})

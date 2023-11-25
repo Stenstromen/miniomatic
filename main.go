@@ -2,18 +2,20 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 	"github.com/stenstromen/miniomatic/controller"
 	"github.com/stenstromen/miniomatic/db"
-
-	"github.com/gorilla/mux"
 )
+
+const APIVersion = "/v1"
 
 func init() {
 	log.Println("Initializing Miniomatic...")
@@ -24,17 +26,75 @@ func init() {
 	}
 }
 
-const APIVersion = "/v1"
+func loadEnv() error {
+	err := godotenv.Load()
+	if err != nil {
+		return fmt.Errorf("error loading .env file or not found: %w. Using default environment variables", err)
+	}
+	return nil
+}
+
+func setupRouter() *mux.Router {
+	router := mux.NewRouter()
+	router.Use(corsMiddleware)
+	router.Use(apiKeyMiddleware)
+
+	router.HandleFunc(APIVersion+"/instances", controller.GetItems).Methods("GET")
+	router.HandleFunc(APIVersion+"/instances/{id}", controller.GetItem).Methods("GET")
+	router.HandleFunc(APIVersion+"/instances", controller.CreateItem).Methods("POST")
+	router.HandleFunc(APIVersion+"/instances/{id}", controller.UpdateItem).Methods("PATCH")
+	router.HandleFunc(APIVersion+"/instances/{id}", controller.DeleteItem).Methods("DELETE")
+
+	return router
+}
+
+func main() {
+	if err := loadEnv(); err != nil {
+		log.Fatal(err)
+	}
+
+	router := setupRouter()
+
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: router,
+		// Additional HTTP server settings can be set here
+	}
+
+	go func() {
+		log.Println("Server started on: http://:8080")
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal("Failed to start server: ", err)
+		}
+	}()
+
+	gracefulShutdown(server)
+}
+
+func gracefulShutdown(server *http.Server) {
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt)
+
+	<-stop
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatal("Failed to shut down server gracefully: ", err)
+	}
+
+	log.Println("Server shut down gracefully")
+}
 
 func apiKeyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		apiKey := os.Getenv("API_KEY")
+		apiKey, givenApiKey := os.Getenv("API_KEY"), r.Header.Get("X-API-KEY")
+
 		if apiKey == "" {
 			http.Error(w, "Server error", http.StatusInternalServerError)
 			return
 		}
-
-		givenApiKey := r.Header.Get("X-API-KEY")
 		if givenApiKey != apiKey {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
@@ -58,46 +118,4 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
-}
-
-func main() {
-
-	err := godotenv.Load()
-	if err != nil {
-		log.Printf("Error loading .env file or not found: %v. Using default environment variables.", err)
-	}
-
-	router := mux.NewRouter()
-
-	router.Use(corsMiddleware)
-	router.Use(apiKeyMiddleware)
-
-	router.HandleFunc(APIVersion+"/instances", controller.GetItems).Methods("GET")
-	router.HandleFunc(APIVersion+"/instances/{id}", controller.GetItem).Methods("GET")
-	router.HandleFunc(APIVersion+"/instances", controller.CreateItem).Methods("POST")
-	router.HandleFunc(APIVersion+"/instances/{id}", controller.UpdateItem).Methods("PATCH")
-	router.HandleFunc(APIVersion+"/instances/{id}", controller.DeleteItem).Methods("DELETE")
-
-	// Listen for the interrupt signal.
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt)
-
-	server := &http.Server{Addr: ":8080", Handler: router}
-
-	log.Println("Server started on: http://:8080")
-
-	go func() {
-		if err := server.ListenAndServe(); err != nil {
-			log.Fatal("Failed to start server: ", err)
-		}
-	}()
-
-	<-stop
-
-	// Set a timeout for the graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	server.Shutdown(ctx)
-	log.Println("Shutting down gracefully...")
 }

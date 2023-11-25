@@ -9,10 +9,11 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/stenstromen/miniomatic/db"
+	"github.com/stenstromen/miniomatic/model"
 )
 
-func Madmin(Id, RootUser, RootPassword, BucketName, AccessKey, SecretKey string) error {
-
+func Madmin(creds model.Credentials, BucketName, AccessKey, SecretKey string) error {
+	Id, RootUser, RootPassword := creds.RandNum, creds.RootUser, creds.RootPassword
 	endpoint := Id + "." + os.Getenv("WILDCARD_DOMAIN")
 	useSSL := true
 

@@ -1,5 +1,10 @@
 package model
 
+type Credentials struct {
+	RandNum      string
+	RootUser     string
+	RootPassword string
+}
 type Item struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name,omitempty"`
